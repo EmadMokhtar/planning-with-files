@@ -1,8 +1,8 @@
 # skill-lens eval
 
 A repeatable with-and-without check for `planning-with-files`, run by
-[skill-lens](https://github.com/EmadMokhtar/skill-evaluator). One case to start with, measured
-on two agents: Claude Code (a CLI product) and PydanticAI (an agent SDK).
+[skill-lens](https://github.com/EmadMokhtar/skill-evaluator). Two cases, measured on two
+agents: Claude Code (a CLI product) and PydanticAI (an agent SDK).
 
 ## Run it
 
@@ -29,7 +29,9 @@ skill-lens run skills/planning-with-files --baseline none --repeat 5 \
 - The exit code is the CI contract: `0` the gate passed, `1` it failed, `2` a mistake in the
   eval files.
 
-## What the case checks
+## What the cases check
+
+### `creates-the-three-files`
 
 `creates-the-three-files` is eval 1 (todo-cli) from [evals.md](evals.md), with the same seven
 assertions plus two on the contents:
@@ -46,12 +48,39 @@ or a named plan directory, `.planning/<date>-<slug>/`. Each filename must have e
 match. skill-lens checks each filename on its own, so files split across different plan
 directories can still pass. This case does not verify that all three files share one directory.
 
+### `resumes-from-its-own-plan`
+
+This case tests the skill's main claim: a fresh session resumes from the files an earlier
+session wrote. It runs as two sessions against one workspace. Each session is a new agent
+process with no conversation history; only the files carry over.
+
+1. "Build a Python CLI todo tool with persistence, in three phases. Phase 1: design the
+   storage format and the commands. Phase 2: implement add and list. Phase 3: implement done
+   and delete. Do phase 1 only, then stop."
+2. "Continue the todo tool from where the last session stopped. Do the next phase only, then
+   stop."
+
+Session 2 is not told which phase is next; it has to read the plan to know. Every check runs
+after session 2, so each looks for what only session 2 could have done:
+
+| Check | How |
+| --- | --- |
+| `task_plan.md` marks Phase 2 `complete` | regex on the `### Phase 2` section |
+| `task_plan.md` leaves Phase 3 `pending` or `in_progress` | regex on the `### Phase 3` section |
+| `progress.md` records concrete work on `add` and `list` | LLM judge |
+| `progress.md` still records the phase 1 design work, before the `add` and `list` work | LLM judge |
+
+Both files must have exactly one match, so a session 2 that starts a second plan instead of
+continuing the first one fails.
+
 ## Results
 
 Contributor-reported measurements using skill-lens 0.25.0, planning-with-files v3.25.1
 (`99402ce`), Claude Code 2.1.289, with the configuration in this repository: both sandboxes
 required, `sandbox-exec` on macOS. Judge: `openai:gpt-6-luna`. Five runs per arm; tokens,
-cost and latency are means per run.
+cost and latency are means per run. Both cases ran in one run, which cost $6.03 in all.
+
+### `creates-the-three-files`
 
 | Runner and model | With skill | Without skill | Tokens | Cost | Latency |
 | --- | --- | --- | --- | --- | --- |
@@ -77,6 +106,35 @@ Observations from these runs:
   directory in 4; Claude Code always used a named directory.
 - **The hooks ran every time.** Each Claude Code run with the skill ran 14 to 26 hooks
   (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`), and none failed.
+
+### `resumes-from-its-own-plan`
+
+Tokens, cost and latency add up both sessions of a run.
+
+| Runner and model | With skill | Without skill | Tokens | Cost | Latency |
+| --- | --- | --- | --- | --- | --- |
+| `claude-code`, `claude-sonnet-4-6` | 4/5 | 0/5 | 593k (201k without) | $0.52 ($0.19) | 92 s (39 s) |
+| `pydantic-ai`, `openai:gpt-6-luna` | 1/5 | 0/5 | 266k (14k without) | $0.010 ($0.003) | 124 s (36 s) |
+
+Total: $3.64 for the 20 runs, plus $0.005 for the judge.
+
+Observations from these runs:
+
+- Without the skill, no run wrote a plan, so session 2 had none to continue and every check
+  failed.
+- **Claude Code resumed in 4 of 5 runs.** Session 2 found the one named plan, marked Phase 2
+  complete, left Phase 3 open, and added to session 1's log. The failed run did the same work
+  but wrote Phase 3's status as `not_started`, which is not one of the three values the
+  template allows (`pending`, `in_progress`, `complete`), so its regex check failed.
+- **PydanticAI left Phase 3 open in every run, but passed only once.** In 3 runs session 2
+  rewrote `progress.md` as a new session entry and dropped session 1's entries. Its
+  `write_file` tool replaces a whole file, while Claude Code edits a file in place. In 2 runs
+  session 2 left Phase 2 `in_progress` because it could not run the tests it wrote: a
+  framework runner has no shell, and `run_script` runs only the skill's own scripts. One run
+  had both problems.
+- **The hooks ran in both sessions.** Each Claude Code run with the skill ran 26 to 31 hooks
+  across its two sessions, with `UserPromptSubmit` and `Stop` once per session, and none
+  failed.
 
 ## How a run is isolated
 
@@ -131,15 +189,17 @@ its stdout and stderr.
   the recorded spend of every run and every judge call reaches it, no new case starts. Cases
   already running finish, the rest are reported as not run, and the gate fails.
 - A PydanticAI run stops at its own default of 50 model requests. A `budget: max_tokens` in a
-  case would stop it earlier, while it spends, and fail that case. This case sets none, so its
-  checks stay the same as eval 1's.
+  case would stop it earlier, while it spends, and fail that case. Neither case sets one, so
+  `creates-the-three-files` keeps the same checks as eval 1.
 
 ## Known limits
 
-- A case is one session. skill-lens can now run several sessions against one workspace
-  (`sessions:`), which can test that a fresh session resumes from the files, but no case here
-  does that yet.
+- `resumes-from-its-own-plan` checks the planning files, not the code: it does not test that
+  `add` and `list` work. A first session that ignored "then stop" and finished phase 2 itself,
+  followed by a second session that changed nothing, could still pass every check.
+- Under PydanticAI the agent has no shell, so it cannot run the code it writes. A session that
+  wants to test a phase before it marks the phase complete leaves it `in_progress`.
 - Hooks are reported, not checked. No case asserts that a hook fired.
 - The product sandbox does not stop reads outside the working directory or network access.
-- Running the eval costs money (about $2.38 for the 20 runs above) and needs
+- Running the eval costs money (about $6.03 for the 40 runs above) and needs
   `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) and `OPENAI_API_KEY`.

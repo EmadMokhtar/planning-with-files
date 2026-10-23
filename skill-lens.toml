@@ -38,7 +38,7 @@ product_sandbox = "required"
 # Stop the whole run once its recorded spend reaches this many US dollars:
 # every run and every judge call, both arms, errored runs included. Cases
 # already running finish; the rest are reported as not run, and the gate
-# fails. The run in docs/skill-lens.md cost $2.38.
+# fails. The run in docs/skill-lens.md, both cases, cost $6.03.
 max_spend_usd = 10.00
 
 concurrency = 2

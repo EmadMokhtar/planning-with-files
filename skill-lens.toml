@@ -1,6 +1,7 @@
 # skill-lens configuration for the planning-with-files evals.
-# Secrets never live here: OPENAI_API_KEY and the Claude Code login come
-# from the environment.
+# Secrets never live here: OPENAI_API_KEY and CLAUDE_CODE_OAUTH_TOKEN (or
+# ANTHROPIC_API_KEY) come from the environment. Claude Code runs with a
+# temporary home directory, so the login saved in your own home is not used.
 
 # docs/skill-lens.md explains the run and the results. Overridden per run
 # with --runner.
@@ -27,6 +28,19 @@ min_pass_rate = 1.0
 # scripts run in skill-lens's sandbox (sandbox-exec on macOS, bwrap on Linux).
 allow_scripts = true
 script_sandbox = "required"
+
+# Run Claude Code (the runner, and the judge when judge = "claude-code") with
+# a temporary home directory and an allowlisted environment, inside
+# sandbox-exec on macOS or bwrap on Linux. "required" refuses to start when
+# neither works, instead of falling back to a run with no sandbox.
+product_sandbox = "required"
+
+# Stop the whole run once its recorded spend reaches this many US dollars:
+# every run and every judge call, both arms, errored runs included. Cases
+# already running finish; the rest are reported as not run, and the gate
+# fails. The run in docs/skill-lens.md cost $2.38.
+max_spend_usd = 10.00
+
 concurrency = 2
 
 [runners.claude-code]

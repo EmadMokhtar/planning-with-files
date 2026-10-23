@@ -81,34 +81,33 @@ continuing the first one fails.
 Contributor-reported measurements using skill-lens 0.25.0, planning-with-files v3.25.1
 (`99402ce`), Claude Code 2.1.289, with the configuration in this repository: both sandboxes
 required, `sandbox-exec` on macOS. Judge: `openai:gpt-6-luna`. Five runs per arm; tokens,
-cost and latency are means per run. Both cases ran in one run, which cost $6.03 in all.
+cost and latency are means per run. Both cases ran in one run, which cost $5.87 in all.
 
 ### `creates-the-three-files`
 
 | Runner and model | With skill | Without skill | Tokens | Cost | Latency |
 | --- | --- | --- | --- | --- | --- |
-| `claude-code`, `claude-sonnet-4-6` | 3/5 | 0/5 | 431k (103k without) | $0.34 ($0.12) | 66 s (28 s) |
-| `pydantic-ai`, `openai:gpt-6-luna` | 5/5 | 0/5 | 259k (7k without) | $0.012 ($0.002) | 116 s (23 s) |
+| `claude-code`, `claude-sonnet-4-6` | 2/5 | 0/5 | 340k (111k without) | $0.31 ($0.13) | 61 s (30 s) |
+| `pydantic-ai`, `openai:gpt-6-luna` | 5/5 | 0/5 | 275k (7k without) | $0.016 ($0.002) | 187 s (18 s) |
 
-Total: $2.38 for the 20 runs, plus $0.004 for the judge.
+Total: $2.28 for the 20 runs, plus $0.004 for the judge.
 
-The pass counts match the earlier run on skill-lens 0.23.0 and planning-with-files v3.25.0,
-which had no product sandbox and did not deliver `templates/`, `reference.md` or
-`examples.md` to the agent.
+Claude Code's pass count changes from run to run: two earlier runs of this case, one on
+skill-lens 0.23.0 and planning-with-files v3.25.0 and one on 0.25.0, both gave 3/5.
+PydanticAI gave 5/5 every time.
 
 Observations from these runs:
 
 - Without the skill, neither agent wrote a planning file in any of the 10 runs.
-- **Claude Code sometimes creates the files and leaves them empty.** Both failed runs left
-  `findings.md` as the empty template that `init-session.sh` writes, and one also left the
-  actions in `progress.md` empty. The earlier run showed the same pattern, and the contributor
-  also observed it with Sonnet under PydanticAI. This small sample does not isolate model,
-  runner or environment effects. `gpt-6-luna` filled every file in the five runs with the
-  skill.
-- **Both layouts happen.** PydanticAI used the project root in 1 of 5 runs and a named plan
-  directory in 4; Claude Code always used a named directory.
-- **The hooks ran every time.** Each Claude Code run with the skill ran 14 to 26 hooks
-  (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`), and none failed.
+- **Claude Code sometimes creates the files and leaves them empty.** All three failed runs left
+  `findings.md` as the empty template that `init-session.sh` writes. The earlier runs showed
+  the same pattern, and the contributor also observed it with Sonnet under PydanticAI. This
+  small sample does not isolate model, runner or environment effects. `gpt-6-luna` filled
+  every file in the five runs with the skill.
+- **Both layouts happen.** PydanticAI used the project root in 3 of 5 runs and a named plan
+  directory in 2; Claude Code always used a named directory.
+- **The hooks did nothing visible.** Each Claude Code run with the skill ran 13 to 19 hooks.
+  All exited 0, and none printed anything; see [What the hooks did](#what-the-hooks-did).
 
 ### `resumes-from-its-own-plan`
 
@@ -116,28 +115,28 @@ Tokens, cost and latency add up both sessions of a run.
 
 | Runner and model | With skill | Without skill | Tokens | Cost | Latency |
 | --- | --- | --- | --- | --- | --- |
-| `claude-code`, `claude-sonnet-4-6` | 4/5 | 0/5 | 593k (201k without) | $0.52 ($0.19) | 92 s (39 s) |
-| `pydantic-ai`, `openai:gpt-6-luna` | 1/5 | 0/5 | 266k (14k without) | $0.010 ($0.003) | 124 s (36 s) |
+| `claude-code`, `claude-sonnet-4-6` | 4/5 | 0/5 | 643k (146k without) | $0.54 ($0.17) | 90 s (32 s) |
+| `pydantic-ai`, `openai:gpt-6-luna` | 0/5 | 0/5 | 268k (15k without) | $0.010 ($0.003) | 175 s (39 s) |
 
-Total: $3.64 for the 20 runs, plus $0.005 for the judge.
+Total: $3.57 for the 20 runs, plus $0.005 for the judge.
 
 Observations from these runs:
 
 - Without the skill, no run wrote a plan, so session 2 had none to continue and every check
   failed.
-- **Claude Code resumed in 4 of 5 runs.** Session 2 found the one named plan, marked Phase 2
-  complete, left Phase 3 open, and added to session 1's log. The failed run did the same work
-  but wrote Phase 3's status as `not_started`, which is not one of the three values the
-  template allows (`pending`, `in_progress`, `complete`), so its regex check failed.
-- **PydanticAI left Phase 3 open in every run, but passed only once.** In 3 runs session 2
-  rewrote `progress.md` as a new session entry and dropped session 1's entries. Its
-  `write_file` tool replaces a whole file, while Claude Code edits a file in place. In 2 runs
-  session 2 left Phase 2 `in_progress` because it could not run the tests it wrote: a
-  framework runner has no shell, and `run_script` runs only the skill's own scripts. One run
-  had both problems.
-- **The hooks ran in both sessions.** Each Claude Code run with the skill ran 26 to 31 hooks
-  across its two sessions, with `UserPromptSubmit` and `Stop` once per session, and none
-  failed.
+- **Claude Code resumed in all five runs; four passed.** Session 2 found the one named plan,
+  marked Phase 2 complete, left Phase 3 open, and kept session 1's entries in the log. The
+  failed run did the same, but wrote its phases as `## Phase N` headings instead of the
+  template's `### Phase N`, so neither regex found the sections.
+- **PydanticAI left Phase 3 open in every run, but no run passed.** In all five runs the final
+  `progress.md` had no entry for phase 1. The report does not record tool calls, so it does
+  not show how session 1's entries were lost; one possible cause is that skill-lens's
+  `write_file` tool replaces a whole file. In 3 runs session 2 also left Phase 2
+  `in_progress`, because it could not run the tests it wrote: a framework runner has no
+  shell, and `run_script` runs only the skill's own scripts.
+- **The hooks did nothing visible here either.** Each Claude Code run with the skill ran 25 to
+  42 hooks across its two sessions, with `UserPromptSubmit` and `Stop` once per session. All
+  exited 0, and none printed anything.
 
 ## How a run is isolated
 
@@ -185,6 +184,14 @@ its stdout and stderr.
   to the session.
 - PydanticAI does not run the hooks, so a PydanticAI result says nothing about them.
 
+In the runs in [Results](#results), every hook exited 0 and none printed anything. Run by hand
+in a copy of a kept workspace, with `CLAUDE_SKILL_DIR` set, the `UserPromptSubmit` hook prints
+the plan. Each hook command looks for its script under `${CLAUDE_SKILL_DIR}`, then under
+`$HOME/.claude/`, and exits 0 silently when it finds neither. The most likely reading is that
+Claude Code 2.1.289 does not set `CLAUDE_SKILL_DIR` for a skill's hooks, and the temporary
+home has no personal install to fall back to. That reading has not been confirmed. If it is
+right, the Claude Code results measure the skill without the context its hooks add.
+
 ## Budgets
 
 - A `budget:` block is checked after a run ends. Only its `max_tokens` also stops a run while it
@@ -207,7 +214,9 @@ its stdout and stderr.
   followed by a second session that changed nothing, could still pass every check.
 - Under PydanticAI the agent has no shell, so it cannot run the code it writes. A session that
   wants to test a phase before it marks the phase complete leaves it `in_progress`.
+- The two regexes look for `### Phase N` headings, as in the template. A plan written with
+  another heading level fails them even when it resumed correctly, as one Claude Code run did.
 - Hooks are reported, not checked. No case asserts that a hook fired.
 - The product sandbox does not stop reads outside the working directory or network access.
-- Running the eval costs money (about $6.03 for the 40 runs above) and needs
+- Running the eval costs money (about $5.87 for the 40 runs above) and needs
   `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) and `OPENAI_API_KEY`.

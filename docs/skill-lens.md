@@ -60,15 +60,18 @@ process with no conversation history; only the files carry over.
 2. "Continue the todo tool from where the last session stopped. Do the next phase only, then
    stop."
 
-Session 2 is not told which phase is next; it has to read the plan to know. Every check runs
-after session 2, so each looks for what only session 2 could have done:
+Session 2 is not told which phase is next, so it has to find out from the files. Under Claude
+Code the skill's `UserPromptSubmit` hook is also meant to put the plan into the session's
+context; see [What the hooks did](#what-the-hooks-did) for whether it did. Every check runs
+after session 2 and looks for the work session 2 was asked to do. The checks cannot tell
+which session did that work (see [Known limits](#known-limits)):
 
 | Check | How |
 | --- | --- |
 | `task_plan.md` marks Phase 2 `complete` | regex on the `### Phase 2` section |
-| `task_plan.md` leaves Phase 3 `pending` or `in_progress` | regex on the `### Phase 3` section |
+| `task_plan.md` does not mark Phase 3 `complete` | regex on the `### Phase 3` section |
 | `progress.md` records concrete work on `add` and `list` | LLM judge |
-| `progress.md` still records the phase 1 design work, before the `add` and `list` work | LLM judge |
+| `progress.md` has an entry for phase 1 before its entries for the `add` and `list` work | LLM judge |
 
 Both files must have exactly one match, so a session 2 that starts a second plan instead of
 continuing the first one fails.
@@ -162,7 +165,8 @@ Observations from these runs:
   macOS, `bwrap` on Linux). The configuration requires a working sandbox backend for script
   execution and refuses to fall back to unsandboxed scripts. This framework path needs a
   supported backend; it is unavailable on native Windows. With only Claude Code available,
-  use the CLI-only runner and judge configuration above with `--no-allow-scripts`. Sandbox
+  use the CLI-only runner and judge configuration above with `--no-allow-scripts` and
+  `--product-sandbox auto`. Sandbox
   preflight otherwise runs even for a CLI-only run.
 
 ## What the hooks did
@@ -176,11 +180,15 @@ its stdout and stderr.
 - `--json-output` keeps every hook, successful ones included, under `hooks`.
 - Hooks are reported, never checked: a failed hook does not fail a case by itself. Exit code
   `2` is how a hook blocks on purpose, and Claude Code reports it as `error` too.
+- Every hook command in `SKILL.md` ends in `exit 0`, including when it cannot find its script.
+  So `success` shows that a hook ran, not that it did its work; its stdout shows what it added
+  to the session.
 - PydanticAI does not run the hooks, so a PydanticAI result says nothing about them.
 
 ## Budgets
 
-- A `budget:` block is checked after a run ends; it fails the check, it does not stop spending.
+- A `budget:` block is checked after a run ends. Only its `max_tokens` also stops a run while it
+  spends, and only under PydanticAI (see the last bullet).
 - Claude Code stops a run itself at `--max-budget-usd` (`1.00` in `skill-lens.toml`); such a run
   is reported as errored.
 - The Claude Code runner's timeout (`timeout_seconds`, 600 here) also stops its run. This

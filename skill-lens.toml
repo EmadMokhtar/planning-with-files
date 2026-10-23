@@ -14,8 +14,9 @@ temperature = "unset"
 
 # One judge for every runner. It is from a different provider than the
 # claude-code runner; for the pydantic-ai runner it is the same model as
-# the one under test. With only a Claude Code login, use
-# judge = "claude-code" instead and drop the three judge/model keys.
+# the one under test. With only Claude Code (CLAUDE_CODE_OAUTH_TOKEN or
+# ANTHROPIC_API_KEY, and no OPENAI_API_KEY), use judge = "claude-code"
+# instead and drop the three judge/model keys.
 judge = "pydantic-ai"
 judge_model = "openai:gpt-6-luna"
 judge_temperature = "unset"

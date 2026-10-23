@@ -55,8 +55,10 @@ cases:
   # session wrote. Session 1 plans three phases and is told to stop after
   # phase 1. Session 2 has no conversation history, only the workspace, and
   # is told to do the next phase without being told which one it is. Every
-  # check runs after session 2, so each looks for what only session 2 could
-  # have done: phase 2 marked complete and phase 3 not. A file_glob must match
+  # check runs after session 2 and looks for the work session 2 was asked to
+  # do: phase 2 marked complete and phase 3 not. The checks cannot tell which
+  # session did that work, so a session 1 that ignored "then stop" would pass
+  # too (docs/skill-lens.md, Known limits). A file_glob must match
   # exactly one file, so a session 2 that starts a second plan instead of
   # continuing the first one fails too.
   - name: resumes-from-its-own-plan
@@ -72,18 +74,20 @@ cases:
         Do the next phase only, then stop.
     workspace: {}
     assertions:
-      # The Status line of the "### Phase 2" section, before the next "###"
-      # heading, says complete.
+      # The Status line of the "### Phase 2" section says complete. The section
+      # ends at the next heading of level 1 to 3 ("#", "##" or "###").
       - kind: regex
-        value: '(?ms)^### Phase 2\b(?:(?!^### ).)*?\*\*Status:\*\*[ \t]*complete\b'
+        value: '(?ms)^### Phase 2\b(?:(?!^#{1,3} ).)*?\*\*Status:\*\*[ \t]*complete\b'
         file_glob: [task_plan.md, .planning/*/task_plan.md]
-      # Phase 3 was left for later: its Status line is pending or in_progress.
+      # Phase 3 was left for later: its Status line says anything but complete
+      # (pending, in_progress, not_started, ...), in any letter case and after
+      # any leading punctuation or emoji.
       - kind: regex
-        value: '(?ms)^### Phase 3\b(?:(?!^### ).)*?\*\*Status:\*\*[ \t]*(?:pending|in_progress)\b'
+        value: '(?ims)^### Phase 3\b(?:(?!^#{1,3} ).)*?\*\*Status:\*\*[ \t]*(?!\W*complete\b)\S'
         file_glob: [task_plan.md, .planning/*/task_plan.md]
     judge:
       artifacts:
         - glob: [progress.md, .planning/*/progress.md]
       rubric:
         - progress.md records concrete work on the add and list commands, such as files changed or commands run, not only empty template fields.
-        - progress.md still records the phase 1 design work, before the add and list work, so the later session added to the same log rather than replacing it.
+        - progress.md has an entry for phase 1, the design of the storage format and the commands, before its entries for the add and list work.
